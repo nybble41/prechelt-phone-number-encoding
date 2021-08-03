@@ -6,11 +6,6 @@ use std::path::Path;
 
 type Dictionary = HashMap<Vec<u8>, Vec<String>>;
 
-struct Cons<'a, T: 'a> {
-    data: T,
-    next: Option<&'a Cons<'a, T>>,
-}
-
 /// Port of Peter Norvig's Lisp solution to the Prechelt phone-encoding problem.
 ///
 /// Even though this is intended as a port, it deviates quite a bit from it
@@ -29,12 +24,15 @@ fn main() -> io::Result<()> {
     let mut buf = BufWriter::new(lock);
 
     for line in read_lines(input_file)? {
-        if let Ok(num) = line {
-            let digits: Vec<_> = num.chars()
-                .filter_map(numeric_char_to_digit)
-                .collect();
-            write_translations(&mut buf, &dict, &num, &digits, None)?;
-        }
+        let num = line?;
+        let digits: Vec<_> = num.chars()
+            .filter_map(numeric_char_to_digit)
+            .collect();
+        write_translations(&mut buf, &dict, &digits, false, &mut |writer| {
+            writer.write(num.as_bytes())?;
+            writer.write(":".as_bytes())?;
+            Ok(())
+        })?;
     }
     Ok(())
 }
@@ -42,14 +40,12 @@ fn main() -> io::Result<()> {
 fn write_translations<'dict, W: Write>(
     writer: &mut W,
     dict: &'dict Dictionary,
-    num: &str,
     digits: &[u8],
-    words: Option<&Cons<&'dict str>>,
+    after_digit: bool,
+    prefix: &mut dyn FnMut(&mut W) -> io::Result<()>,
 ) -> io::Result<()> {
     if digits.len() == 0 {
-        writer.write(num.as_bytes())?;
-        writer.write(":".as_bytes())?;
-        write_reversed(writer, words)?;
+        prefix(writer)?;
         writer.write("\n".as_bytes())?;
     } else {
         let mut found_word = false;
@@ -61,41 +57,31 @@ fn write_translations<'dict, W: Write>(
                     write_translations(
                         writer,
                         dict,
-                        num,
                         rest,
-                        Some(&Cons {
-                            data: &*word,
-                            next: words,
-                        }),
-                    )?;
+                        false,
+                        &mut |writer| {
+                            prefix(writer)?;
+                            writer.write(" ".as_bytes())?;
+                            writer.write(word.as_bytes())?;
+                            Ok(())
+                        })?;
                 }
             }
         }
-        if !found_word
-            && !words
-                .map(|c| c.data.chars().all(char::is_numeric))
-                .unwrap_or(false)
-        {
+        if !found_word && !after_digit {
             write_translations(
                 writer,
                 dict,
-                num,
                 &digits[1..],
-                Some(&Cons {
-                    data: digit_to_str(digits[0]),
-                    next: words,
-                }),
+                true,
+                &mut |writer| {
+                    prefix(writer)?;
+                    writer.write(" ".as_bytes())?;
+                    writer.write(digit_to_str(digits[0]).as_bytes())?;
+                    Ok(())
+                },
             )?;
         }
-    }
-    Ok(())
-}
-
-fn write_reversed<W: Write>(writer: &mut W, words: Option<&Cons<&str>>) -> io::Result<()> {
-    if let Some(c) = words {
-        write_reversed(writer, c.next)?;
-        writer.write(" ".as_bytes())?;
-        writer.write(c.data.as_bytes())?;
     }
     Ok(())
 }
