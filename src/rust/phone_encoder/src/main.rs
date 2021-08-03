@@ -47,9 +47,10 @@ fn write_translations<'dict, W: Write>(
     words: Option<&Cons<&'dict str>>,
 ) -> io::Result<()> {
     if digits.len() == 0 {
-        write!(writer, "{}:", num)?;
+        writer.write(num.as_bytes())?;
+        writer.write(":".as_bytes())?;
         write_reversed(writer, words)?;
-        writeln!(writer)?;
+        writer.write("\n".as_bytes())?;
     } else {
         let mut found_word = false;
         for i in 0..digits.len() {
@@ -93,7 +94,8 @@ fn write_translations<'dict, W: Write>(
 fn write_reversed<W: Write>(writer: &mut W, words: Option<&Cons<&str>>) -> io::Result<()> {
     if let Some(c) = words {
         write_reversed(writer, c.next)?;
-        write!(writer, " {}", c.data)?;
+        writer.write(" ".as_bytes())?;
+        writer.write(c.data.as_bytes())?;
     }
     Ok(())
 }
