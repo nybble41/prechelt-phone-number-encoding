@@ -1,7 +1,7 @@
 use std::collections::HashMap;
 use std::env::args;
 use std::fs::File;
-use std::io::{self, BufRead};
+use std::io::{self, BufRead, BufWriter, Write};
 use std::path::Path;
 
 use num_bigint::BigUint;
@@ -25,27 +25,33 @@ fn main() -> io::Result<()> {
 
     let dict = load_dict(words_file)?;
 
+    // pre-lock stdout and use buffered output
+    let stdout = std::io::stdout();
+    let lock = stdout.lock();
+    let mut buf = BufWriter::new(lock);
+
     for line in read_lines(input_file)? {
         if let Ok(num) = line {
             let digits: Vec<_> = num.chars()
                 .filter_map(numeric_char_to_digit)
                 .collect();
-            print_translations(&dict, &num, &digits, None);
+            write_translations(&mut buf, &dict, &num, &digits, None)?;
         }
     }
     Ok(())
 }
 
-fn print_translations<'dict>(
+fn write_translations<'dict, W: Write>(
+    writer: &mut W,
     dict: &'dict Dictionary,
     num: &str,
     digits: &[u8],
     words: Option<&Cons<&'dict str>>,
-) {
+) -> io::Result<()> {
     if digits.len() == 0 {
-        print!("{}:", num);
-        print_reversed(words);
-        println!();
+        write!(writer, "{}:", num)?;
+        write_reversed(writer, words)?;
+        writeln!(writer)?;
     } else {
         let mut found_word = false;
         let mut n = 1u8.into();
@@ -55,7 +61,8 @@ fn print_translations<'dict>(
             if let Some(ws) = dict.get(&n) {
                 for word in ws {
                     found_word = true;
-                    print_translations(
+                    write_translations(
+                        writer,
                         dict,
                         num,
                         &digits[(i + 1)..],
@@ -63,7 +70,7 @@ fn print_translations<'dict>(
                             data: &*word,
                             next: words,
                         }),
-                    );
+                    )?;
                 }
             }
         }
@@ -72,7 +79,8 @@ fn print_translations<'dict>(
                 .map(|c| c.data.chars().all(char::is_numeric))
                 .unwrap_or(false)
         {
-            print_translations(
+            write_translations(
+                writer,
                 dict,
                 num,
                 &digits[1..],
@@ -80,16 +88,18 @@ fn print_translations<'dict>(
                     data: digit_to_str(digits[0]),
                     next: words,
                 }),
-            );
+            )?;
         }
     }
+    Ok(())
 }
 
-fn print_reversed(words: Option<&Cons<&str>>) {
+fn write_reversed<W: Write>(writer: &mut W, words: Option<&Cons<&str>>) -> io::Result<()> {
     if let Some(c) = words {
-        print_reversed(c.next);
-        print!(" {}", c.data);
+        write_reversed(writer, c.next)?;
+        write!(writer, " {}", c.data)?;
     }
+    Ok(())
 }
 
 fn digit_to_str(digit: u8) -> &'static str {
