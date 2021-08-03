@@ -4,9 +4,7 @@ use std::fs::File;
 use std::io::{self, BufRead, BufWriter, Write};
 use std::path::Path;
 
-use num_bigint::BigUint;
-
-type Dictionary = HashMap<BigUint, Vec<String>>;
+type Dictionary = HashMap<Vec<u8>, Vec<String>>;
 
 struct Cons<'a, T: 'a> {
     data: T,
@@ -54,18 +52,16 @@ fn write_translations<'dict, W: Write>(
         writeln!(writer)?;
     } else {
         let mut found_word = false;
-        let mut n = 1u8.into();
         for i in 0..digits.len() {
-            n *= 10u8;
-            n += digits[i];
-            if let Some(ws) = dict.get(&n) {
+            let (n, rest) = digits.split_at(i + 1);
+            if let Some(ws) = dict.get(n) {
                 for word in ws {
                     found_word = true;
                     write_translations(
                         writer,
                         dict,
                         num,
-                        &digits[(i + 1)..],
+                        rest,
                         Some(&Cons {
                             data: &*word,
                             next: words,
@@ -128,13 +124,8 @@ where P: AsRef<Path> {
     Ok(io::BufReader::new(file).lines())
 }
 
-fn word_to_number(word: &str) -> BigUint {
-    let mut n = 1u8.into();
-    for digit in word.chars().filter_map(alpha_char_to_digit) {
-        n *= 10u8;
-        n += digit;
-    }
-    n
+fn word_to_number(word: &str) -> Vec<u8> {
+    word.chars().filter_map(alpha_char_to_digit).collect()
 }
 
 fn alpha_char_to_digit(ch: char) -> Option<u8> {
